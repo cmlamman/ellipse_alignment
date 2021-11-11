@@ -2,6 +2,7 @@ import numpy as np
 from astropy.table import Table, vstack
 from astropy.coordinates import SkyCoord
 from astropy import units as u
+from functions.sky_functions import *
 
 import time
 
@@ -46,7 +47,7 @@ def rw1_to_lmi(rw1):
     '''return index (0-20) corresponding to 20 r-w1 color bins for use in look-up table of weights'''
     return (((rw1-1)/3.5)*20).astype(int)
 
-def get_rel_es(catalog, indices, shape='default', weights=None):
+def get_rel_es(catalog, indices, weights=None):
     '''
     input: 
         array of indices for n centers and maximum m neighbors each- shape(n,m)
@@ -158,31 +159,28 @@ def get_e_dist(catalog, n_centers, max_dist=deg_to_rad(0.5), max_neighbors=50, c
         dd[too_close] = float('inf')
         
     # measure relative ellipticities
-    rel_es, rel2_es, weights_tu = get_rel_es(catalog, ii, shape=shape, weights=weights)
+    rel_es, rel2_es, weights_tu = get_rel_es(catalog, ii, weights=weights)
     
     # removing seperations where there is no neighbor
     seps = dd[:,1:].ravel()
     seps = seps[seps!= float('inf')]
     
-    if weights is None:
-        return seps, rel_es
-    else:
-        return seps, rel_es, weights_tu
+    return seps, rel_es, weights_tu
 
 
 
 # FOR SAVING CONDENSED VERESION OF RESULTS
 
-def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=None): 
+def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=0): 
     
-    if weights!=None:
+    if len(weights)>0:
         binx = np.linspace(0, sep_max, nbins)
         
         msum, edges, binnumber = stats.binned_statistic(seps, reles*weights, statistic="sum", bins=nbins)
         wsum, edges, binnumber = stats.binned_statistic(seps, weights, statistic="sum", bins=nbins)
         wmeans = msum / wsum
         
-        stds, edges, binnumber = stats.binned_statistic(seps, wmeans, statistic="std", bins=nbins)
+        stds, edges, binnumber = stats.binned_statistic(seps, reles, statistic="std", bins=nbins)
         
         return binx, wmeans, stds
         
@@ -191,3 +189,47 @@ def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=None):
         means, edges, binnumber = stats.binned_statistic(seps, reles, statistic="mean", bins=nbins)
         stds, edges, binnumber = stats.binned_statistic(seps, reles, statistic="std", bins=nbins)
         return binx, means, stds
+    
+    
+def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sample_results/alignment0_',
+                      delta_rz_min=None, delta_rz_max=2, rz_positive=None):
+    '''
+    weights: lookup matrix with weights based on chance that two galaxies with r-w1 
+        colors are seperated by less than 10 Mpc. Calibrated with DESI early spectra
+        (path to .npy file). Can set to "None"
+    sort_by: options for how to sort the data before run in batches. Default runs in 
+    save_path: directory and first part of filename to save results in (str)
+    _ for other args see help(get_e_dist) _
+    '''
+    t0 = time.time()
+    
+    if len(weights)>0:
+        weights0 = np.load(weights)
+         
+    v = 100                 # number of batches to run in (data will be saved after each batch)
+    nn=int(len(data)/v)+1    
+    n0=0
+    n1=nn
+    
+    # go through v batches and save each time
+    for r in range(v):   # can add [n:] - starting on n if that's were it ended last time
+    
+        if r%10==True:
+            print('Working on '+str(r)+'/'+str(v))
+            print("So far it's been",round((time.time()-t0)/60., 3),' minutes\n')    
+        catalog = data[n0:n1]
+        n0+=nn; n1+=nn
+
+        seps, rele1s, weights_tu = get_e_dist(data, len(catalog), max_dist=deg_to_rad(0.5),
+                                              max_neighbors=1000, centers=catalog, weights=weights0,
+                                              delta_rz_min=delta_rz_min, delta_rz_max=delta_rz_max,
+                                              rz_positive=rz_positive) 
+
+        # binning
+        binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)
+
+        #print('Saving') 
+        np.savetxt(save_path+str(r+1)+'.csv', wmeans, delimiter=",")
+
+    t1 = time.time()    
+    print('Finished! Total time: ',round((t1-t0)/60., 10),' minutes\n')    
