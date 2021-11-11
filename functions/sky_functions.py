@@ -8,8 +8,20 @@ import numpy as np
 # converting between deg and radians ( if not already in astropy anlge)
 def rad_to_deg(ang_rad):
     return ang_rad * 180 / np.pi
-def rad(ang_deg):
+def deg_to_rad(ang_deg):
     return ang_deg * np.pi / 180
+
+def ang180(ang):
+    '''Put orientation angle in range of 0-180 deg'''
+    ang = ang % 180
+    ang = (ang+180)%180
+    return ang
+
+def angpi(ang):
+    '''Put orientation angle in range of 0-pi deg'''
+    ang = ang % np.pi
+    ang = (ang+np.pi)%np.pi
+    return ang
 
 
 def sky_area(ra1, ra2, dec1, dec2):
@@ -23,7 +35,7 @@ def get_points(data):
     return np.dstack([points.x.value, points.y.value, points.z.value])[0]
 
 
-def get_sep(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.deg):
+def get_sep(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.rad):
     '''
     Input: ra and decs [deg] for two objects. 
     Returns: 
@@ -33,7 +45,7 @@ def get_sep(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.deg):
     c2 = SkyCoord(ra2, dec2, unit=u_coords, frame='icrs', equinox='J2000.0')
     return (c1.separation(c2)).to(u_result)
     
-def get_pa(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.deg):
+def get_pa(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.rad):
     '''
     Input: ra and decs [deg] for two objects. 
     Returns: 
@@ -44,6 +56,22 @@ def get_pa(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.deg):
     c2 = SkyCoord(ra2, dec2, unit=u_coords, frame='icrs', equinox='J2000.0')
     pa = c1.position_angle(c2).to(u_result)
     return pa
+
+
+def get_sep_pa(ra1, dec1, ra2, dec2, u_coords='deg'):
+    '''
+    Input: ra and decs [deg] for two objects. 
+    Returns: 
+    - separation [deg]
+    - position angle of second galaxy relative to first [deg], E of N
+    '''
+    c1 = SkyCoord(ra1, dec1, unit=u_coords, frame='icrs', equinox='J2000.0')
+    c2 = SkyCoord(ra2, dec2, unit=u_coords, frame='icrs', equinox='J2000.0')
+    sep = c1.separation(c2).to(u.rad)
+    pa = c1.position_angle(c2).to(u.rad)
+    return sep, pa
+
+
 
 def rand_sample(catalog, n):
     return catalog[np.random.choice(len(catalog), n, replace=False)]
@@ -68,6 +96,8 @@ def rand_targets(num=100, ra1=162., ra2=198., dec1=2., dec2=28.):
     coords_final = rand_sample(coords_lim, num)  # make final sample exactly how many was asked for
     
     return coords_final.transpose()    
+
+
 
 
 ## functions to limit a table of objects to only those within a given boundary
