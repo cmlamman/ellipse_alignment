@@ -6,6 +6,7 @@ from astropy import units as u
 from matplotlib.patches import Ellipse
 from functions.sky_functions import *
 from functions.alignment_functions import *
+import numpy.linalg as linalg
 
 from astropy.cosmology import LambdaCDM
 cosmo = LambdaCDM(H0=69.6, Om0=0.286, Ode0=0.714)
@@ -23,6 +24,19 @@ def rw1_to_z(rw1):
     return rw1*0.2443683701202549+0.0037087929968548927
 
 
+
+def plot_E_flat(ellipse_as, ellipse_bs, thetas, color='blue', scale=1, figsize=(8,8)):
+    '''for plotting single ellipse centered at orgin. thetas must be in deg'''
+    
+    ells = [Ellipse(xy = [0,0],
+                    width=ellipse_as*scale, 
+                    height=ellipse_bs*scale,
+                    angle=90-thetas)]
+    
+    fig, ax = plt.subplots(subplot_kw={'aspect': 'equal'}, figsize=figsize)
+    ax.add_artist(ells[0])
+    ells[0].set_alpha(.3)
+    
 
 def plot_Es(sample, color='blue', scale=1, figsize=(8,8)):
     
@@ -44,6 +58,42 @@ def plot_Es(sample, color='blue', scale=1, figsize=(8,8)):
     plt.ylabel('DEC')
     ax.set_xlim(np.min(sample['RA']), np.max(sample['RA']))
     ax.set_ylim(np.min(sample['DEC']), np.max(sample['DEC']))
+    
+    
+def plot_ellipsoid_grid(el, proj_direction='x', centers=False, size=1, point_size=0.02):
+    # ellispsoid and center in matrix form
+    A = np.array([el['sigman_L2com'][0]**2*el['sigman_eigenvecsMaj_L2com'],
+                            el['sigman_L2com'][1]**2*el['sigman_eigenvecsMid_L2com'],
+                            el['sigman_L2com'][2]**2*el['sigman_eigenvecsMin_L2com']])
+    
+    # find the rotation matrix and radii of the axes
+    U, s, rotation = linalg.svd(A)
+    scale = (1/el['sigman_L2com'][0])*size
+    radii = np.sqrt(s) * scale
+    
+    # making 3d grid around surface of ellipsoid
+    u = np.linspace(0.0, 2.0 * np.pi, 100)
+    v = np.linspace(0.0, np.pi, 20)
+    x = radii[0] * np.outer(np.cos(u), np.sin(v))
+    y = radii[1] * np.outer(np.sin(u), np.sin(v))
+    z = radii[2] * np.outer(np.ones_like(u), np.cos(v))
+    
+    # rotate grid 
+    for i in range(len(x)):
+        for j in range(len(v)):
+            [x[i,j],y[i,j],z[i,j]] = np.dot([x[i,j],y[i,j],z[i,j]], rotation)
+            
+    if centers=='Sky':
+        y+=el['RA']; z+=el['DEC']
+    if centers==True:
+        x+=el['x_L2com'][0]; y+=el['x_L2com'][1]; z+=el['x_L2com'][2]
+        
+    if proj_direction=='z':
+        plt.scatter(x, y, color='orange', s=point_size, alpha=.5)
+    if proj_direction=='y':
+        plt.scatter(x, z, color='orange', s=point_size, alpha=.5)
+    if proj_direction=='x':
+        plt.scatter(y, z, color='orange', s=point_size, alpha=.5)
     
     
     

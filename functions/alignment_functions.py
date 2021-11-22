@@ -204,6 +204,8 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
     combined_points = get_points(data)
     tree = cKDTree(combined_points)
     
+    
+    
     if sort_by=='sky area':
         
         data.sort('DEC')
