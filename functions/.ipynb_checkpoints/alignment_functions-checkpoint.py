@@ -4,7 +4,7 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from functions.sky_functions import *
 
-import time
+import time, glob
 
 from scipy.spatial import cKDTree
 from scipy import stats
@@ -47,7 +47,7 @@ def rw1_to_lmi(rw1):
     '''return index (0-20) corresponding to 20 r-w1 color bins for use in look-up table of weights'''
     return (((rw1-1)/3.5)*20).astype(int)
 
-def get_rel_es(catalog, indices, weights=None):
+def get_rel_es(catalog, indices, weights=None, rcolor='rw1'):
     '''
     input: 
         array of indices for n centers and maximum m neighbors each- shape(n,m)
@@ -81,19 +81,19 @@ def get_rel_es(catalog, indices, weights=None):
     e1_re, e2_rel = e_complex(a, b, pa_rel)
     
     if weights is None:
-        return e1_re, e2_rel, 0
+        return e1_re, e2_rel, None
     
     else:
         
-        rw1_centers = catalog['rw1'][ci]
-        rw1_neighbors = catalog['rw1'][ni]
+        rw1_centers = catalog[rcolor][ci]
+        rw1_neighbors = catalog[rcolor][ni]
         all_ws = weights[rw1_to_lmi(rw1_centers), rw1_to_lmi(rw1_neighbors)]
     
         return e1_re, e2_rel, all_ws
     
     
 
-def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors=50, centers=None, delta_rw1_min=None, delta_rw1_max=None, rw1_positive=True, no_lensed=False, weights=None):
+def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors=100, centers=None, delta_rw1_min=None, delta_rw1_max=None, rw1_positive=True, no_lensed=False, weights=None, rcolor='rw1'):
     '''
     Input: astropy table of galaxies, number of centers to use, 
     maximum distance away from those centers to seach (in radians)
@@ -119,11 +119,11 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
         catalog.add_row(place_holder_row)
         # indices where pairs are too close in r-w1 color, whether positive or negative (center is closer / further)
         if rw1_positive == True:  # remove where neighbor is ~behind central galaxy
-            too_close = (catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) < delta_rw1_min   #rw1 of neighbor - rw1 of center
+            too_close = (catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) < delta_rw1_min   #rw1 of neighbor - rw1 of center
         elif rw1_positive == False:  # remove where neighbor is ~in front of central galaxy
-            too_close = (catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) > -delta_rw1_min 
+            too_close = (catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) > -delta_rw1_min 
         elif rw1_positive == None:
-            too_close == np.abs(catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) < delta_rw1_min 
+            too_close == np.abs(catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) < delta_rw1_min 
         catalog.remove_row(-1)
         too_close[:,:1]=False # don't want to remove indices of centers
         ii[too_close] = len(catalog)  # where the pairs are too close, functionally remove them from the list of pairs
@@ -134,11 +134,11 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
         place_holder_row.append(-3)
         catalog.add_row(place_holder_row)
         # indices where pairs are too far in r-w1 color
-        drz = (catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) #rw1 of neighbor - rw1 of center
+        drz = (catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) #rw1 of neighbor - rw1 of center
         if rw1_positive == False:  # remove where neighbor is ~in front of central galaxy
             too_far = (np.abs(drz) > delta_rw1_max) & (drz < 0)
         elif rw1_positive == None:
-            too_far = np.abs(catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) > delta_rw1_max 
+            too_far = np.abs(catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) > delta_rw1_max 
         catalog.remove_row(-1)
         too_far[:,:1]=False # don't want to remove indices of centers
         ii[too_far] = len(catalog)  # where the pairs are too close, functionally remove them from the list of pairs
@@ -148,14 +148,14 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
         place_holder_row = [0]*(len(catalog[0])-1)
         place_holder_row.append(-3)
         catalog.add_row(place_holder_row)
-        too_close = (catalog['rw1'][ii[:,:1]] - catalog['rw1'][ii]) < 0  # remove if redshift of center < redshift of neighbor galaxy
+        too_close = (catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) < 0  # remove if redshift of center < redshift of neighbor galaxy
         catalog.remove_row(-1)
         too_close[:,:1]=False # don't want to remove indices of centers
         ii[too_close] = len(catalog)  # where the pairs are too close, functionally remove them from the list of pairs
         dd[too_close] = float('inf')
         
     # measure relative ellipticities
-    rel_es, rel2_es, weights_tu = get_rel_es(catalog, ii, weights=weights)
+    rel_es, rel2_es, weights_tu = get_rel_es(catalog, ii, weights=weights, rcolor=rcolor)
     
     # removing seperations where there is no neighbor
     seps = dd[:,1:].ravel()
@@ -167,9 +167,9 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
 
 # FOR SAVING CONDENSED VERESION OF RESULTS
 
-def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=0): 
+def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=None): 
     
-    if len(weights)>0:
+    if(weights is not None):
         binx = np.linspace(0, sep_max, nbins)
         
         msum, edges, binnumber = stats.binned_statistic(seps, reles*weights, statistic="sum", bins=nbins)
@@ -188,7 +188,8 @@ def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=0):
     
     
 def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sample_results/alignment0_',
-                      delta_rw1_min=None, delta_rw1_max=2, rw1_positive=None, sort_by='default_order'):
+                      rcolor='rw1', delta_rw1_min=None, delta_rw1_max=2, rw1_positive=None, 
+                      sort_by='sky area', overwrite=True):
     '''
     weights: lookup matrix with weights based on chance that two galaxies with r-w1 
         colors are seperated by less than 10 Mpc. Calibrated with DESI early spectra
@@ -198,58 +199,63 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
     save_path: directory and first part of filename to save results in (str)
     _ for other args see help(get_e_dist) _
     '''
+    
     t0 = time.time()
     
-    # make tree
-    combined_points = get_points(data)
-    tree = cKDTree(combined_points)
+    k0=0
+    if overwrite==False:
+        k0 = len(glob.glob(save_path+'*.csv')) # number of batches already saved
     
     if sort_by=='sky area':
-        
-        data.sort('DEC')
-        strip_width = int(len(data)/10)
     
-        if len(weights)>0:
+        if(weights is not None):
             weights0 = np.load(weights)
+        elif(weights is None):
+            weights0 = None
 
+        data.sort('DEC')
+        # make tree
+        combined_points = get_points(data)
+        tree = cKDTree(combined_points)
+    
         v=10  # number of dec strips
-        nn=int(len(LRGs)/10)+1  # size of dec strips
+        nn=int(len(data)/v)  # size of dec strips
         n0=0
         n1=nn
         k=0 # to keep track of number of squares
         
         # go through v batches and save each time
         for r in range(v):   # can add [n:] - starting on n if that's were it ended last time
-            
-            if r%10==True:
+                
+            if r%2==True:
                 print('Working on '+str(r+1)+'/'+str(v))
                 print("So far it's been",round((time.time()-t0)/60., 10),' minutes\n')
 
-            catalog0 = data[n0:n1]
+            catalog0 = data[n0:n1].copy()
             n0+=nn; n1+=nn
 
-            catalog0.sort('DEC')
+            catalog0.sort('RA')
             w = 10                 # number of ra strips
-            mm=int(len(catalog0)/10)+1  # size of squares after strips split into ra
+            mm=int(len(catalog0)/w)  # size of squares after strips split into ra
             m0=0
             m1=mm
             for s in range(w):
                 catalog = catalog0[m0:m1]
                 m0+=mm; m1+=mm
                 k+=1
+                
+                if k<=k0:
+                    continue
+                
+                seps, rele1s, weights_tu = get_e_dist(data, tree, len(catalog), max_dist=deg_to_rad(0.5),
+                                                      max_neighbors=2000, centers=catalog, weights=weights0,
+                                                      delta_rw1_min=delta_rw1_min, delta_rw1_max=delta_rw1_max,
+                                                      rw1_positive=rw1_positive, rcolor=rcolor) 
+                # binning
+                binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)
 
-
-            
-            seps, rele1s, weights_tu = get_e_dist(data, tree, len(catalog), max_dist=deg_to_rad(0.5),
-                                                  max_neighbors=1000, centers=catalog, weights=weights0,
-                                                  delta_rw1_min=delta_rw1_min, delta_rw1_max=delta_rw1_max,
-                                                  rw1_positive=rw1_positive) 
-
-            # binning
-            binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)
-
-            #print('Saving') 
-            np.savetxt(save_path+str(r+1)+'.csv', wmeans, delimiter=",")
+                #print('Saving') 
+                np.savetxt(save_path+str(k)+'.csv', wmeans, delimiter=",")
 
         t1 = time.time()    
         print('Finished! Total time: ',round((t1-t0)/60., 10),' minutes\n')    
@@ -258,13 +264,19 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
     
     
     
-    elif sort_by=='default_order':
+    elif sort_by=='default order':
     
-        if len(weights)>0:
+        if(weights is not None):
             weights0 = np.load(weights)
+        elif(weights is None):
+            weights0 = None
 
+        # make tree
+        combined_points = get_points(data)
+        tree = cKDTree(combined_points)
+        
         v = 100                 # number of batches to run in (data will be saved after each batch)
-        nn=int(len(data)/v)+1    
+        nn=int(len(data)/v)    
         n0=0
         n1=nn
 
@@ -276,11 +288,14 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
                 print("So far it's been",round((time.time()-t0)/60., 3),' minutes\n')    
             catalog = data[n0:n1]
             n0+=nn; n1+=nn
-
+            
+            if (r+1)<=k0:
+                    continue
+                    
             seps, rele1s, weights_tu = get_e_dist(data, tree, len(catalog), max_dist=deg_to_rad(0.5),
-                                                  max_neighbors=1000, centers=catalog, weights=weights0,
+                                                  max_neighbors=2000, centers=catalog, weights=weights0,
                                                   delta_rw1_min=delta_rw1_min, delta_rw1_max=delta_rw1_max,
-                                                  rw1_positive=rw1_positive) 
+                                                  rw1_positive=rw1_positive, rcolor=rcolor) 
 
             # binning
             binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)

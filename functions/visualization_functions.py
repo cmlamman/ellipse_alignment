@@ -118,14 +118,18 @@ def plot_ellipces(inds, xmin=199.5, xmax=205.5, ymin=-.5, ymax=5.5, color=None):
     
     
 def plot_rel_e(results_paths=['sample_results/alignment0_'], labels=['LRG basic alignment'], 
-    title='Projected Alignment of DESI LRGs', psize = 5, esize = 3, lw=1):
+    title='Projected Alignment of DESI LRGs', psize = 5, esize = 3, lw=1, e_sep=False):
+    '''e_sep: plot relative ellipticity x separation'''
     
     v=100
     
     fig = plt.figure(figsize=(10, 7))
     plt.title(title)
     plt.xlabel('Radial Separation [deg]')
-    plt.ylabel(r"Relative Ellipticity of Neighbor $\epsilon_1'$")
+    if e_sep==False:
+        plt.ylabel(r"Relative Ellipticity of Neighbor $\epsilon_1'$")
+    elif e_sep==True:
+        plt.ylabel(r"$\epsilon_1'$(separation)")
     binx = np.linspace(0, 0.5, 20)
     
     for k in range(len(results_paths)):
@@ -138,11 +142,17 @@ def plot_rel_e(results_paths=['sample_results/alignment0_'], labels=['LRG basic 
             except FileNotFoundError:
                 continue
         av_means_ab0 = np.mean(all_means_crz0, axis=0)
-        av_err_ab0 = np.sqrt(np.sum((av_means_ab0-all_means_crz0)**2, axis=0)) / v # rms / sqrt(n_bins)
+        av_err_ab0 = np.sqrt(np.sum((av_means_ab0-all_means_crz0)**2, axis=0)) / np.sqrt(v*(v-1))  # rms / sqrt(n_bins)
         all_means_ab0 = np.concatenate(all_means_crz0)
         
-        plt.errorbar(binx, av_means_ab0, yerr=av_err_ab0, linestyle='--', marker='.', 
-                     linewidth=lw, capsize=esize, markersize=psize, label=labels[k]);
+        if e_sep==False:
+            plt.errorbar(binx, av_means_ab0, yerr=av_err_ab0, linestyle='--', marker='.', 
+                         linewidth=lw, capsize=esize, markersize=psize, label=labels[k]);
+        elif e_sep==True:
+            sep_err_frac_est = .01
+            errs = np.abs(av_means_ab0*binx) * np.sqrt((av_err_ab0/av_means_ab0)**2 + (.01)**2)
+            plt.errorbar(binx, av_means_ab0*binx, yerr=errs, linestyle='--', marker='.', 
+                         linewidth=lw, capsize=esize, markersize=psize, label=labels[k]);
         
         
     # more fancy things to add to plot

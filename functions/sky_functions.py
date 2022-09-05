@@ -2,7 +2,7 @@
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.coordinates.tests.utils import randomly_sample_sphere
+#from astropy.coordinates.tests.utils import randomly_sample_sphere
 import numpy as np
 
 # converting between deg and radians ( if not already in astropy anlge)
@@ -31,7 +31,7 @@ total_skyarea = sky_area(0, 360, -90, 90)
 
 def get_points(data):
     points = SkyCoord(data['RA'], data['DEC'], unit='deg', frame='icrs', equinox='J2000.0')
-    points.representation = 'cartesian'
+    points = points.cartesian   # old astropy: points.representation = 'cartesian'
     return np.dstack([points.x.value, points.y.value, points.z.value])[0]
 
 
