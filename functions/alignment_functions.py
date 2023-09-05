@@ -6,6 +6,9 @@ from functions.sky_functions import *
 
 import time, glob
 
+from astropy.cosmology import LambdaCDM
+cosmo = LambdaCDM(H0=69.6, Om0=0.286, Ode0=0.714)
+
 from scipy.spatial import cKDTree
 from scipy import stats
 # useful info at http://legacysurvey.org/dr8/catalogs/
@@ -46,6 +49,31 @@ def a_b(e1, e2):
 def rw1_to_lmi(rw1):
     '''return index (0-20) corresponding to 20 r-w1 color bins for use in look-up table of weights'''
     return (((rw1-1)/3.5)*20).astype(int)
+
+def psep_to_lmi(psep):
+    '''return index (0-20) corresponding to 20 projected separations [deg] for use in look-up table of weights'''
+    psep[psep>0.5] = 0.499
+    return (((psep)/0.5)*20).astype(int)
+
+
+def get_psep(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.rad):
+    '''
+    Input: ra and decs [deg] for two objects. 
+    Returns: 
+    - astropy quantity of separation 
+    '''
+    c1 = SkyCoord(ra1, dec1, unit=u_coords, frame='icrs', equinox='J2000.0')
+    c2 = SkyCoord(ra2, dec2, unit=u_coords, frame='icrs', equinox='J2000.0')
+    return (c1.separation(c2)).to(u_result).value
+
+def get_weight_3D(catalog1, catalog2, weights):
+    '''catalogs must consitute pairs which are already within 0.5 deg of each other'''
+    color1_index = rw1_to_lmi(catalog1['rw1'])
+    color2_index = rw1_to_lmi(catalog2['rw1'])
+    psep_difference = get_psep(catalog1['RA'], catalog1['DEC'], catalog2['RA'], catalog2['DEC'], u_result=u.deg)
+    psep_index = psep_to_lmi(psep_difference)
+    return weights[color1_index, color2_index, psep_index]
+
 
 def get_rel_es(catalog, indices, weights=None, rcolor='rw1'):
     '''
@@ -88,6 +116,7 @@ def get_rel_es(catalog, indices, weights=None, rcolor='rw1'):
         rw1_centers = catalog[rcolor][ci]
         rw1_neighbors = catalog[rcolor][ni]
         all_ws = weights[rw1_to_lmi(rw1_centers), rw1_to_lmi(rw1_neighbors)]
+        #all_ws = get_weight_3D(centers_m, neighbors_m, weights)**2
     
         return e1_re, e2_rel, all_ws
     
@@ -138,7 +167,10 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
         if rw1_positive == False:  # remove where neighbor is ~in front of central galaxy
             too_far = (np.abs(drz) > delta_rw1_max) & (drz < 0)
         elif rw1_positive == None:
-            too_far = np.abs(catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) > delta_rw1_max 
+            # second condition temporary for test
+            radial_distances =  cosmo.comoving_distance(catalog['Z']).to(u.Mpc).value
+            rad_seps = np.abs(radial_distances[ii[:,:1]] - radial_distances[ii])
+            too_far = (np.abs(catalog[rcolor][ii[:,:1]] - catalog[rcolor][ii]) > delta_rw1_max) | (rad_seps > 60)
         catalog.remove_row(-1)
         too_far[:,:1]=False # don't want to remove indices of centers
         ii[too_far] = len(catalog)  # where the pairs are too close, functionally remove them from the list of pairs
@@ -159,7 +191,7 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
     
     # removing seperations where there is no neighbor
     seps = dd[:,1:].ravel()
-    seps = seps[seps!= float('inf')]
+    seps = seps[seps!= float('inf')]   # separation in radians
     
     return seps, rel_es, weights_tu
 
@@ -168,6 +200,7 @@ def get_e_dist(catalog, tree, n_centers, max_dist=deg_to_rad(0.5), max_neighbors
 # FOR SAVING CONDENSED VERESION OF RESULTS
 
 def bin_results(seps, reles, nbins=20, sep_max=deg_to_rad(0.5), weights=None): 
+    '''sep_max really does nothing'''
     
     if(weights is not None):
         binx = np.linspace(0, sep_max, nbins)
@@ -247,12 +280,14 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
                 if k<=k0:
                     continue
                 
+                # seps in radians
                 seps, rele1s, weights_tu = get_e_dist(data, tree, len(catalog), max_dist=deg_to_rad(0.5),
                                                       max_neighbors=2000, centers=catalog, weights=weights0,
                                                       delta_rw1_min=delta_rw1_min, delta_rw1_max=delta_rw1_max,
                                                       rw1_positive=rw1_positive, rcolor=rcolor) 
                 # binning
-                binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)
+                binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, weights=weights_tu, sep_max=deg_to_rad(0.5))
+                # in radians
 
                 #print('Saving') 
                 np.savetxt(save_path+str(k)+'.csv', wmeans, delimiter=",")
@@ -298,10 +333,35 @@ def measure_alignment(data, weights='sample_data/rw1_weights.npy', save_path='sa
                                                   rw1_positive=rw1_positive, rcolor=rcolor) 
 
             # binning
-            binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=0.5, weights=weights_tu)
+            binx, wmeans, stds = bin_results(seps, rele1s, nbins=20, sep_max=deg_to_rad(0.5), weights=weights_tu)
 
             #print('Saving') 
             np.savetxt(save_path+str(r+1)+'.csv', wmeans, delimiter=",")
 
         t1 = time.time()    
         print('Finished! Total time: ',round((t1-t0)/60., 10),' minutes\n')
+        
+        
+def get_IA_weights(catalog, axis_ratio_column='axis_ratio', position_angle_column='position_angle', ra_column='RA', dec_column='Dec'):
+    '''
+    catalog: table where each row contains a pair of galaxies along with their:
+        axis_ratio: float between 0-1
+        position_angle: float, degrees between 0-180. Measured E of N
+        RA, DEC: float, in degrees
+    '''
+    # position angle between the galaxies in each pair
+    pa1 = get_pa(catalog[ra_column+'1'], catalog[dec_column+'1'], catalog[ra_column+'2'], catalog[dec_column+'2']).value
+    pa2 = angpi(pa1) # equivalent to pa1 + pi
+    
+    a = np.asarray([1]*len(catalog)) # since we have axis ratios
+    # calculate rotation angle of galaxy1 relative to seperation vector between it and galaxy2
+    pa_rel1 = catalog[position_angle_column+'_1'] - pa1  # in rad
+    e1_rel1, e2_rel = e_complex(a, catalog[axis_ratio_column+'_1'], pa_rel1)
+    rel_ellipticity1 = np.asarray(e1_rel1)
+    
+    # and now do the same for the other way around
+    pa_rel2 = catalog[position_angle_column+'_2'] - pa2  # in rad
+    e1_rel2, e2_rel = e_complex(a, catalog[axis_ratio_column+'_2'], pa_rel2)
+    rel_ellipticity2 = np.asarray(e1_rel2)
+    
+    return rel_ellipticity1, rel_ellipticity2

@@ -107,7 +107,10 @@ def limit_region(targets, ra1=200., ra2=205., dec1=0., dec2=5.):
     try:
         return targets[(targets['RA']>ra1)&(targets['RA']<ra2)&(targets['DEC']>dec1)&(targets['DEC']<dec2)]
     except KeyError:
-        return targets[(targets['TARGET_RA']>ra1)&(targets['TARGET_RA']<ra2)&(targets['TARGET_DEC']>dec1)&(targets['TARGET_DEC']<dec2)]
+        try:
+            return targets[(targets['TARGET_RA']>ra1)&(targets['TARGET_RA']<ra2)&(targets['TARGET_DEC']>dec1)&(targets['TARGET_DEC']<dec2)]
+        except KeyError:
+            return targets[(targets['RA']>ra1)&(targets['RA']<ra2)&(targets['Dec']>dec1)&(targets['Dec']<dec2)]
 
 def radial_region(targets, ra, dec, r):
     '''limit to region within r [deg] of given coords [deg]'''
