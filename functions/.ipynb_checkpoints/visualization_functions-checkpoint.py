@@ -117,7 +117,7 @@ def plot_ellipces(inds, xmin=199.5, xmax=205.5, ymin=-.5, ymax=5.5, color=None):
     ax.set_ylim(ymin, ymax)
     
     
-def plot_rel_e(results_paths=['sample_results/alignment0_'], labels=['LRG basic alignment'], 
+def plot_rel_e_phot(results_paths=['sample_results/alignment0_'], labels=['LRG basic alignment'], 
     title='Projected Alignment of DESI LRGs', psize = 5, esize = 3, lw=1, e_sep=False):
     '''e_sep: plot relative ellipticity x separation'''
     
@@ -170,3 +170,69 @@ def plot_rel_e(results_paths=['sample_results/alignment0_'], labels=['LRG basic 
     ax2.set_xticklabels(ax2Xs);
     ax2.set_xlabel('Mpc/h (z=0.5)')
     plt.tight_layout();
+    
+    
+    
+def plot_rel_e(results_paths=['sample_results/alignment0_'], labels=['LRG basic alignment'], colors=['b'],
+    title=' ', psize = 5, esize = 3, lw=1, e_sep=False, Ls=[[1]], alpha=1, save_path=False):
+    '''e_sep: plot relative ellipticity x separation'''
+    lbs=15; fts=17
+    #v= 100
+    
+    if Ls[0][0]==1:
+        Ls = [[1]]*len(results_paths)
+    
+    fig = plt.figure(figsize=(10, 7))
+    ax1 = fig.add_subplot(111)
+    #ax1.ticklabel_format(style='sci', axis='y')
+    #plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    plt.title(title)
+    plt.xlabel(r'Projected Separation, $r_p$ [$h^{-1}$Mpc]', fontsize=fts)
+    
+    if e_sep==False and Ls[0][0]==1:
+        plt.ylabel(r"Relative Ellipticity of Neighbor $\mathcal{E} (r_p)$", fontsize=fts)
+    elif e_sep==True and Ls[0][0]==1:
+        plt.ylabel(r"$R\mathcal{E} (r_p)$ [$h^{-1}$Mpc]", fontsize=fts)
+    
+    elif e_sep==False and Ls[0][0]!=1:
+        plt.ylabel(r"$L\mathcal{E} (r_p)$ [$h^{-1}$Mpc]", fontsize=fts)
+    elif e_sep==True and Ls[0][0]!=1:
+        plt.ylabel(r"$LR\mathcal{E} (r_p)$ [$h^{-2}$Mpc$^2$]", fontsize=fts)
+    
+    for k in range(len(results_paths)):
+
+        all_means_crz0 = [] 
+        for r in range(100+1)[1:]:
+            try:
+                file_contents = np.array([fc.split(',') for fc in open(results_paths[k]+str(r)+'.csv').read().split('\n')])
+                binx = np.asarray(file_contents[0]).astype('float')
+                dff0 = np.asarray(file_contents[1]).astype('float')
+                all_means_crz0.append(dff0)
+            except FileNotFoundError:
+                continue
+        v = len(all_means_crz0)
+        print(v, 'files found')
+        av_means_ab0 = np.mean(all_means_crz0, axis=0)
+        av_err_ab0 = np.sqrt(np.sum((av_means_ab0-all_means_crz0)**2, axis=0)) / np.sqrt(v*(v-1))  # rms / sqrt(n_bins)
+        all_means_ab0 = np.concatenate(all_means_crz0)
+        
+        if e_sep==False:
+            plt.errorbar(binx, av_means_ab0*Ls[k], yerr=av_err_ab0*Ls[k], linestyle='--', marker='.', 
+                         linewidth=lw, capsize=esize, markersize=psize, label=labels[k], color=colors[k], alpha=alpha);
+            plt.legend(loc='upper right', fontsize=lbs)
+            
+            
+        elif e_sep==True:
+            sep_err_frac_est = .01
+            errs = np.abs(av_means_ab0*binx) * np.sqrt((av_err_ab0/av_means_ab0)**2 + (.01)**2)
+            plt.errorbar(binx, av_means_ab0*binx*Ls[k], yerr=errs*Ls[k], linestyle='--', marker='.', 
+                         linewidth=lw, capsize=esize, markersize=psize, label=labels[k], color=colors[k], alpha=alpha);
+            legend = plt.legend(loc='upper left', fontsize=lbs)#, title='Density tracer')
+            plt.setp(legend.get_title(),fontsize='large')
+    
+    plt.plot([0, np.max(binx)], [0, 0], color='black', linewidth=0.2, linestyle='--', dashes=(40, 30));
+    
+    plt.xticks(fontsize=lbs); plt.yticks(fontsize=lbs);
+    
+    if save_path!=False:
+        fig.savefig(save_path, dpi=300)

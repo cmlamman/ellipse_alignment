@@ -30,6 +30,7 @@ total_skyarea = sky_area(0, 360, -90, 90)
 
 
 def get_points(data):
+    '''ra and dec in deg, returns points on unit circle (ie distances in radians)'''
     points = SkyCoord(data['RA'], data['DEC'], unit='deg', frame='icrs', equinox='J2000.0')
     points = points.cartesian   # old astropy: points.representation = 'cartesian'
     return np.dstack([points.x.value, points.y.value, points.z.value])[0]
@@ -44,6 +45,16 @@ def get_sep(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.rad):
     c1 = SkyCoord(ra1, dec1, unit=u_coords, frame='icrs', equinox='J2000.0')
     c2 = SkyCoord(ra2, dec2, unit=u_coords, frame='icrs', equinox='J2000.0')
     return (c1.separation(c2)).to(u_result)
+
+def get_sep_2D(catalog1, catalog2, u_coords='deg', u_result=u.deg):
+    '''
+    Input: ra and decs [deg] for two objects. 
+    Returns: 
+       separation in units of u_coords
+    '''
+    c1 = SkyCoord(catalog1['RA'], catalog1['DEC'], unit=u_coords, frame='icrs', equinox='J2000.0')
+    c2 = SkyCoord(catalog2['RA'], catalog2['DEC'], unit=u_coords, frame='icrs', equinox='J2000.0')
+    return (c1.separation(c2)).to(u_result).value
     
 def get_pa(ra1, dec1, ra2, dec2, u_coords='deg', u_result=u.rad):
     '''
