@@ -137,7 +137,7 @@ def plot_rel_e_phot(results_paths=['sample_results/alignment0_'], labels=['LRG b
         all_means_crz0 = [] 
         for r in range(100):
             try:
-                dff0 = np.array(open(results_paths[k]+str(r)+'.csv').read().split('\n')[:-1]).astype(np.float)
+                dff0 = np.array(open(results_paths[k]+str(r)+'.csv').read().split('\n')[:-1][1].split(',')).astype(float)
                 all_means_crz0.append(dff0)
             except FileNotFoundError:
                 continue

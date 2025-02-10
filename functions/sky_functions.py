@@ -5,6 +5,9 @@ from astropy.coordinates import SkyCoord
 #from astropy.coordinates.tests.utils import randomly_sample_sphere
 import numpy as np
 
+from astropy.cosmology import LambdaCDM
+cosmo = LambdaCDM(H0=69.6, Om0=0.286, Ode0=0.714)
+
 # converting between deg and radians ( if not already in astropy anlge)
 def rad_to_deg(ang_rad):
     return ang_rad * 180 / np.pi
@@ -133,3 +136,9 @@ def donut_region(targets, ra, dec, r_min, r_max):
     return targets[(seps<=r_max) & (seps>r_min)]
 
 
+def get_Mpc_h(deg, z=0.725):
+    return deg_to_rad(deg) * (cosmo.angular_diameter_distance(z)/u.Mpc) / 0.7 # in units of Mpc/h, assuming lcdm and z=0.725
+def get_deg(Mpc_h, z=0.725):
+    return deg((Mpc_h* 0.7) / (cosmo.angular_diameter_distance(z)/u.Mpc))
+def get_Mpc_h_comoving(deg, z=0.725):
+    return deg_to_rad(deg) * (cosmo.comoving_distance(z)/u.Mpc) / 0.7 # in units of Mpc/h, assuming lcdm and z=0.725

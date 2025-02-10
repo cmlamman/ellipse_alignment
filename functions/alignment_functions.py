@@ -120,25 +120,26 @@ def get_rel_es(catalog, indices, data_weights=None, weights=None, rcolor='rw1', 
     ##np.savetxt('/pscratch/sd/c/clamman/ia_measurements/LRG_ELG_cut_z/'+str(j)+'.csv', z_binned[0], delimiter=',')
     
     if (weights is None) and (data_weights is None):
-        return e1_re, e2_rel, None
+        if return_sep==True:
+            psep = get_psep(centers_m['RA'], centers_m['DEC'], neighbors_m['RA'], neighbors_m['DEC'], u_coords='deg', u_result=u.deg)
+            psep_mpc = get_Mpc_h(psep, centers_m['Z'])  # in units of Mpc / h
+            return e1_re, e2_rel, None, psep_mpc
+        elif return_sep==False:
+            return e1_re, e2_rel, None
     
     elif data_weights is not None:
         # combining weights of centers and neighbors
         all_ws = centers_m['WEIGHT_SYS'] * centers_m['WEIGHT_ZFAIL'] * neighbors_m['WEIGHT_SYS'] * neighbors_m['WEIGHT_ZFAIL']
-        if return_sep==True:
-            psep = get_psep(centers_m['RA'], centers_m['DEC'], neighbors_m['RA'], neighbors_m['DEC'], u_coords='deg', u_result=u.deg)
-            psep_mpc = get_Mpc_h(psep, centers_m['Z'])  # in units of Mpc / h
-            return e1_re, e2_rel, all_ws, psep_mpc
-        elif return_sep==False:
-            return e1_re, e2_rel, all_ws
-    
     else:
-        
         rw1_centers = catalog[rcolor][ci]
         rw1_neighbors = catalog[rcolor][ni]
-        all_ws = weights[rw1_to_lmi(rw1_centers), rw1_to_lmi(rw1_neighbors)]
-        #all_ws = get_weight_3D(centers_m, neighbors_m, weights)**2
+        all_ws = weights[rw1_to_lmi(rw1_centers), rw1_to_lmi(rw1_neighbors)]    
     
+    if return_sep==True:
+        psep = get_psep(centers_m['RA'], centers_m['DEC'], neighbors_m['RA'], neighbors_m['DEC'], u_coords='deg', u_result=u.deg)
+        psep_mpc = get_Mpc_h(psep, centers_m['Z'])  # in units of Mpc / h
+        return e1_re, e2_rel, all_ws, psep_mpc
+    elif return_sep==False:
         return e1_re, e2_rel, all_ws
     
     
@@ -394,8 +395,8 @@ def get_IA_weights(catalog, axis_ratio_column='axis_ratio', position_angle_colum
 
 
 
-def measure_alignment_spec(data, L, rp_bins=np.linspace(0, 20, 21), weights=None, data_weights=None, centers=None, save_path='sample_results/alignment0_', sort_by='sky area', 
-                            overwrite=True, deltaz=None, delta_rw1_max=None):
+def measure_alignment_spec(data, pimax, rp_bins=np.linspace(0, 20, 21), weights=None, data_weights=None, centers=None, save_path='sample_results/alignment0_', sort_by='sky area', 
+                            overwrite=True, deltaz=None, delta_rw1_max=None, nregions=100):
     '''
     FOR MEAURING ALIGNMENT FROM SPECTROSCOPIC DATASET
     --------------------------------------------------
@@ -404,14 +405,14 @@ def measure_alignment_spec(data, L, rp_bins=np.linspace(0, 20, 21), weights=None
     sort_by: options for how to sort the data before run in batches. Either 'sky area' or something else.
         Doesn't matter if tree is made from full catalog, as is default.
     save_path: directory and first part of filename to save results in (str)
-    L: is TOTAL radial dist. will be divided by 2 for max radial separation. also in Mpc/h
+    pimax: 1/2 of the total distance along the LOS, Mpc/h
     _ for other args see help(get_e_dist_spec) _
     '''
     
     t0 = time.time()
     
-    #if centers==None:
-    #    centers = data
+    if centers is None:
+        centers = data
     
     k0=0
     if overwrite==False:
@@ -432,7 +433,7 @@ def measure_alignment_spec(data, L, rp_bins=np.linspace(0, 20, 21), weights=None
         #plt.scatter(combined_points[:,2], combined_points[:,1], s=1, alpha=.1); plt.xlabel('z'); plt.ylabel('y'); plt.show()
         tree = cKDTree(combined_points)
     
-        v=10  # number of dec strips -- NEEDS TO BE 10
+        v=int(np.sqrt(nregions))  # number of dec strips -- NEEDS TO BE 10
         nn=int(len(centers)/v)  # size of dec strips
         n0=0
         n1=nn
@@ -465,7 +466,7 @@ def measure_alignment_spec(data, L, rp_bins=np.linspace(0, 20, 21), weights=None
                 # seps in radians
                 seps, rele1s, weights_tu = get_e_dist_spec(data, tree, len(catalog), max_dist=deg_to_rad(8),
                                                       max_neighbors=100000, centers=catalog, 
-                                                      L=L, delta_rw1_max = delta_rw1_max, data_weights=data_weights, j=k)    # max_distance in RAD!!
+                                                      L=pimax*2, delta_rw1_max = delta_rw1_max, data_weights=data_weights, j=k)    # max_distance in RAD!!
                 
                 #if sep=='deg':
                     # binning
